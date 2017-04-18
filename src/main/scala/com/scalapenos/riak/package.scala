@@ -22,7 +22,7 @@ package com.scalapenos
  *
  * This package also defines some type aliases provided as shortcuts to commonly
  * used classes from other libraries. For example, ContentType is an alias for
- * [[spray.http.ContentType]] and DateTime is an alias for [[org.joda.time.DateTime]].
+ * [[akka.http.scaladsl.model.ContentType]] and DateTime is an alias for [[org.joda.time.DateTime]].
  *
  * @version 0.8.0
  *
@@ -33,13 +33,14 @@ package object riak {
   // Type Aliases
   // ============================================================================
 
-  type ContentType = spray.http.ContentType
-  val ContentType = spray.http.ContentType
-  val ContentTypes = spray.http.ContentTypes
+  type ContentType = akka.http.scaladsl.model.ContentType
+  val ContentType = akka.http.scaladsl.model.ContentType
+  val ContentTypes = akka.http.scaladsl.model.ContentTypes
 
   type DateTime = org.joda.time.DateTime
 
-  val MediaTypes = spray.http.MediaTypes
+  val MediaTypes = akka.http.scaladsl.model.MediaTypes
+  akka.http.scaladsl.marshalling.MultipartMarshallers
 
   // ============================================================================
   // Conflict Resolution

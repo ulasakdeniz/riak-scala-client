@@ -17,9 +17,13 @@
 package com.scalapenos.riak
 package internal
 
-private[riak] object SprayClientExtras {
-  import spray.http.HttpHeader
-  import spray.httpx.RequestBuilding.RequestTransformer
+private[riak] object HttpClientExtras {
+  import akka.http.scaladsl.model.{ HttpHeader, HttpRequest }
+  import akka.http.scaladsl.model.headers.RawHeader
 
-  def addOptionalHeader(header: ⇒ Option[HttpHeader]): RequestTransformer = _.mapHeaders(headers ⇒ header.toList ++ headers)
+  implicit class EnrichedHttpRequest(protected val httpRequest: HttpRequest) {
+    def addOptionalHeader(header: ⇒ Option[HttpHeader]) = httpRequest.mapHeaders(headers ⇒ header.toList ++ headers)
+
+    def addRawHeader(name: String, value: String) = httpRequest.addHeader(RawHeader(name, value))
+  }
 }

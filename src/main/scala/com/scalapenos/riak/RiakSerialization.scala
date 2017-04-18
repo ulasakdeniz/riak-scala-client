@@ -40,7 +40,7 @@ object RiakSerializer extends LowPriorityDefaultRiakSerializerImplicits
 
 private[riak] trait LowPriorityDefaultRiakSerializerImplicits {
   implicit def stringSerializer = new RiakSerializer[String] {
-    def serialize(s: String): (String, ContentType) = (s, ContentTypes.`text/plain`)
+    def serialize(s: String): (String, ContentType) = (s, ContentTypes.`text/plain(UTF-8)`)
   }
 
   import serialization.SprayJsonSerialization.SprayJsonSerializer

@@ -18,8 +18,8 @@ package com.scalapenos.riak
 package internal
 
 private[riak] trait RiakUriSupport {
-  import spray.http.Uri
-  import spray.http.Uri._
+  import akka.http.scaladsl.model.Uri
+  import Uri._
 
   // ==========================================================================
   // Query Parameters
@@ -65,7 +65,7 @@ private[riak] trait RiakUriSupport {
       host = server.host,
       port = server.port,
       path = if (server.pathPrefix.isEmpty) s"/$path" else s"/${server.pathPrefix}/$path",
-      query = query
+      queryString = Some(query.toString())
     )
   }
 }

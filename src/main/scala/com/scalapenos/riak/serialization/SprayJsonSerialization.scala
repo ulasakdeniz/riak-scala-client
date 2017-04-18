@@ -29,8 +29,8 @@ trait SprayJsonSerialization {
   class SprayJsonDeserializer[T: RootJsonReader: ClassTag] extends RiakDeserializer[T] {
     def deserialize(data: String, contentType: ContentType) = {
       contentType match {
-        case ContentType(MediaTypes.`application/json`, _) ⇒ parseAndConvert(data)
-        case _                                             ⇒ throw RiakUnsupportedContentType(ContentTypes.`application/json`, contentType)
+        case ContentType(MediaTypes.`application/octet-stream` | MediaTypes.`application/json`, _) ⇒ parseAndConvert(data)
+        case _                                                                                     ⇒ throw RiakUnsupportedContentType(ContentTypes.`application/json`, contentType)
       }
     }
 

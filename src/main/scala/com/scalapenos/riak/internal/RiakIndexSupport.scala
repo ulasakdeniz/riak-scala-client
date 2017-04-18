@@ -24,8 +24,8 @@ private[riak] object RiakIndexSupport {
 }
 
 private[riak] trait RiakIndexSupport {
-  import spray.http.HttpHeader
-  import spray.http.HttpHeaders._
+  import akka.http.scaladsl.model.HttpHeader
+  import akka.http.scaladsl.model.headers._
   import RiakIndexSupport._
 
   private[riak] def toIndexHeader(index: RiakIndex): HttpHeader = {
@@ -35,7 +35,7 @@ private[riak] trait RiakIndexSupport {
     }
   }
 
-  private[riak] def toRiakIndexes(headers: List[HttpHeader]): Set[RiakIndex] = {
+  private[riak] def toRiakIndexes(headers: Seq[HttpHeader]): Set[RiakIndex] = {
     def toRiakIndex(header: HttpHeader): Set[RiakIndex] = {
       val values = header.value.split(',')
 
@@ -47,7 +47,7 @@ private[riak] trait RiakIndexSupport {
     }
 
     headers.filter(_.lowercaseName.startsWith(indexHeaderPrefix))
-      .flatMap(toRiakIndex(_))
+      .flatMap(toRiakIndex)
       .toSet
   }
 

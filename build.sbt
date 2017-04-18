@@ -4,9 +4,9 @@ name := "riak-scala-client"
 
 version := "0.9.5"
 
-scalaVersion := "2.11.7"
+scalaVersion := "2.11.8"
 
-crossScalaVersions := Seq("2.11.7", "2.10.5")
+crossScalaVersions := Seq("2.11.8", "2.12.1")
 
 crossVersion := CrossVersion.binary
 
@@ -29,24 +29,24 @@ scalacOptions := Seq("-encoding", "utf8",
                      "-Ywarn-adapted-args"
                     )
 
-resolvers ++= Seq("Spray Repository" at "http://repo.spray.io/")
 resolvers ++= Seq("Scalaz Bintray Repo" at "http://dl.bintray.com/scalaz/releases")
 resolvers ++= Seq("snapshots", "releases").map(Resolver.sonatypeRepo)
 
 libraryDependencies <++= (scalaVersion) { v: String =>
-  val sprayVersion = "1.3.3"
-  val akkaVersion = "2.3.12"
-  val specs2Version = if (v.startsWith("2.10")) "2.4.15" else "2.4.15"
+  val akkaVersion = "2.4.17"
+  val akkaHttpVersion = "10.0.5"
+  val specs2Version = "2.4.15"
   Seq(
-     "com.typesafe.akka"      %%  "akka-actor"        % akkaVersion,
-     "com.typesafe.akka"      %%  "akka-slf4j"        % akkaVersion,
-     "io.spray"               %%  "spray-client"      % sprayVersion,
-     "io.spray"               %%  "spray-json"        % "1.3.2",
-     "com.github.nscala-time" %%  "nscala-time"       % "1.6.0",
-     "com.typesafe.akka"      %%  "akka-testkit"      % akkaVersion   % "test",
-     "io.spray"               %%  "spray-testkit"     % sprayVersion  % "test",
-     "org.specs2"             %%  "specs2"            % specs2Version % "test",
-     "ch.qos.logback"         %   "logback-classic"   % "1.1.2"       % "provided"
+    "com.typesafe.akka"      %%  "akka-actor"           % akkaVersion,
+    "com.typesafe.akka"      %%  "akka-slf4j"           % akkaVersion,
+    "com.typesafe.akka"      %%  "akka-http-core"       % akkaHttpVersion,
+    "com.typesafe.akka"      %%  "akka-http"            % akkaHttpVersion,
+    "com.typesafe.akka"      %%  "akka-http-spray-json" % akkaHttpVersion,
+    "com.github.nscala-time" %%  "nscala-time"          % "2.16.0",
+    "com.typesafe.akka"      %%  "akka-testkit"         % akkaVersion       % "test",
+    "com.typesafe.akka"      %%  "akka-http-testkit"    % akkaHttpVersion   % "test",
+    "org.specs2"             %%  "specs2"               % specs2Version     % "test",
+    "ch.qos.logback"         %   "logback-classic"      % "1.1.2"           % "provided"
   )
 }
 
