@@ -20,42 +20,48 @@ package internal
 import java.util.zip.ZipException
 
 import akka.actor._
+import akka.http.scaladsl.Http
+import akka.http.scaladsl.client.RequestBuilding
+import akka.stream.ActorMaterializer
+import akka.stream.scaladsl.{ Flow, Sink }
+import akka.util.ByteString
 
 import scala.util.Try
 
 private[riak] object RiakHttpClientHelper {
-  import spray.http.HttpEntity
-  import spray.httpx.marshalling._
+  import akka.http.scaladsl.model.HttpCharsets
+  import akka.http.scaladsl.marshalling._
 
   /**
    * Spray Marshaller for turning RiakValue instances into HttpEntity instances so they can be sent to Riak.
    */
-  implicit val RiakValueMarshaller: Marshaller[RiakValue] = new Marshaller[RiakValue] {
-    def apply(riakValue: RiakValue, ctx: MarshallingContext) {
-      ctx.marshalTo(HttpEntity(riakValue.contentType, riakValue.data.getBytes(riakValue.contentType.charset.nioCharset)))
-    }
+  implicit val RiakValueMarshaller: ToEntityMarshaller[RiakValue] = {
+    Marshaller.apply(implicit ec ⇒ riakValue ⇒ {
+      val charset = riakValue.contentType.charsetOption.map(_.nioCharset).getOrElse(HttpCharsets.`UTF-8`.nioCharset)
+      Marshaller.ByteArrayMarshaller(riakValue.data.getBytes(charset))
+    })
   }
 }
 
-private[riak] class RiakHttpClientHelper(system: ActorSystem) extends RiakUriSupport with RiakIndexSupport with DateTimeSupport {
+private[riak] class RiakHttpClientHelper(system: ActorSystem) extends RiakUriSupport with RequestBuilding with RiakIndexSupport with DateTimeSupport {
   import scala.concurrent.Future
   import scala.concurrent.Future._
 
-  import spray.client.pipelining._
-  import spray.http.{ HttpEntity, HttpHeader, HttpResponse }
-  import spray.http.StatusCodes._
-  import spray.http.HttpHeaders._
-  import spray.httpx.SprayJsonSupport._
-  import spray.httpx.encoding.Gzip
-  import spray.json.DefaultJsonProtocol._
+  import akka.http.scaladsl.model.{ HttpEntity, HttpHeader, HttpRequest, HttpResponse }
+  import akka.http.scaladsl.model.StatusCodes._
+  import akka.http.scaladsl.model.headers._
+  import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport._
+  import akka.http.scaladsl.coding.Gzip
 
-  import SprayClientExtras._
+  import HttpClientExtras._
   import RiakHttpHeaders._
   import RiakHttpClientHelper._
 
   import system.dispatcher
 
   private implicit val sys = system
+  private implicit val mat = ActorMaterializer()
+  private val http = Http()
   private val settings = RiakClientExtension(system).settings
 
   // ==========================================================================
@@ -74,7 +80,7 @@ private[riak] class RiakHttpClientHelper(system: ActorSystem) extends RiakUriSup
   def fetch(server: RiakServerInfo, bucket: String, key: String, resolver: RiakConflictsResolver): Future[Option[RiakValue]] = {
     httpRequest(Get(KeyUri(server, bucket, key))).flatMap { response ⇒
       response.status match {
-        case OK              ⇒ successful(toRiakValue(response))
+        case OK              ⇒ toRiakValue(response)
         case NotFound        ⇒ successful(None)
         case MultipleChoices ⇒ resolveConflict(server, bucket, key, response, resolver).map(Some(_))
         case other           ⇒ throw new BucketOperationFailed(s"Fetch for key '$key' in bucket '$bucket' produced an unexpected response code '$other'.")
@@ -86,9 +92,9 @@ private[riak] class RiakHttpClientHelper(system: ActorSystem) extends RiakUriSup
   def fetchWithSiblings(server: RiakServerInfo, bucket: String, key: String, resolver: RiakConflictsResolver): Future[Option[Set[RiakValue]]] = {
     httpRequest(Get(KeyUri(server, bucket, key))).flatMap { response ⇒
       response.status match {
-        case OK              ⇒ successful(toRiakValue(response).map(Set(_)))
+        case OK              ⇒ toRiakValue(response).map(_.map(Set(_)))
         case NotFound        ⇒ successful(None)
-        case MultipleChoices ⇒ successful(Some(toRiakSiblingValues(response)))
+        case MultipleChoices ⇒ toRiakSiblingValues(response).map(Option(_))
         case other           ⇒ throw new BucketOperationFailed(s"Fetch for key '$key' in bucket '$bucket' produced an unexpected response code '$other'.")
       }
     }
@@ -108,32 +114,32 @@ private[riak] class RiakHttpClientHelper(system: ActorSystem) extends RiakUriSup
     httpRequest(Get(IndexRangeUri(server, bucket, indexRange))).flatMap { response ⇒
       response.status match {
         case OK         ⇒ fetchWithKeysReturnedByIndexLookup(server, bucket, response, resolver)
-        case BadRequest ⇒ throw new ParametersInvalid(s"""Invalid index name ("${indexRange.fullName}") or range ("${indexRange.start}" to "${indexRange.start}").""")
-        case other      ⇒ throw new BucketOperationFailed(s"""Fetch for index "${indexRange.fullName}" with range "${indexRange.start}" to "${indexRange.start}" in bucket "${bucket}" produced an unexpected response code: ${other}.""")
+        case BadRequest ⇒ throw ParametersInvalid(s"""Invalid index name ("${indexRange.fullName}") or range ("${indexRange.start}" to "${indexRange.start}").""")
+        case other      ⇒ throw BucketOperationFailed(s"""Fetch for index "${indexRange.fullName}" with range "${indexRange.start}" to "${indexRange.start}" in bucket "${bucket}" produced an unexpected response code: ${other}.""")
       }
     }
   }
 
   def store(server: RiakServerInfo, bucket: String, key: String, value: RiakValue, resolver: RiakConflictsResolver): Future[Unit] = {
-    val request = createStoreHttpRequest(value)
+    val request = createStoreHttpRequest(value)(_)
 
     request(Put(KeyUri(server, bucket, key), value)).flatMap { response ⇒
       response.status match {
         case NoContent ⇒ successful(())
-        case other     ⇒ throw new BucketOperationFailed(s"Store of value '$value' for key '$key' in bucket '$bucket' produced an unexpected response code '$other'.")
+        case other     ⇒ throw BucketOperationFailed(s"Store of value '$value' for key '$key' in bucket '$bucket' produced an unexpected response code '$other'.")
         // TODO: case PreconditionFailed => ... // needed when we support conditional request semantics
       }
     }
   }
 
   def storeAndFetch(server: RiakServerInfo, bucket: String, key: String, value: RiakValue, resolver: RiakConflictsResolver): Future[RiakValue] = {
-    val request = createStoreHttpRequest(value)
+    val request = createStoreHttpRequest(value)(_)
 
     request(Put(KeyUri(server, bucket, key, StoreQueryParameters(true)), value)).flatMap { response ⇒
       response.status match {
-        case OK              ⇒ successful(toRiakValue(response).getOrElse(throw new BucketOperationFailed(s"Store of value '$value' for key '$key' in bucket '$bucket' produced an unparsable reponse.")))
+        case OK              ⇒ toRiakValue(response).map(_.getOrElse(throw BucketOperationFailed(s"Store of value '$value' for key '$key' in bucket '$bucket' produced an unparsable reponse.")))
         case MultipleChoices ⇒ resolveConflict(server, bucket, key, response, resolver)
-        case other           ⇒ throw new BucketOperationFailed(s"Store of value '$value' for key '$key' in bucket '$bucket' produced an unexpected response code '$other'.")
+        case other           ⇒ throw BucketOperationFailed(s"Store of value '$value' for key '$key' in bucket '$bucket' produced an unexpected response code '$other'.")
         // TODO: case PreconditionFailed => ... // needed when we support conditional request semantics
       }
     }
@@ -144,21 +150,20 @@ private[riak] class RiakHttpClientHelper(system: ActorSystem) extends RiakUriSup
       response.status match {
         case NoContent ⇒ ()
         case NotFound  ⇒ ()
-        case other     ⇒ throw new BucketOperationFailed(s"Delete for key '$key' in bucket '$bucket' produced an unexpected response code '$other'.")
+        case other     ⇒ throw BucketOperationFailed(s"Delete for key '$key' in bucket '$bucket' produced an unexpected response code '$other'.")
       }
     }
   }
 
   def getBucketProperties(server: RiakServerInfo, bucket: String): Future[RiakBucketProperties] = {
-    import spray.httpx.unmarshalling._
+    import akka.http.scaladsl.unmarshalling._
 
-    httpRequest(Get(PropertiesUri(server, bucket))).map { response ⇒
+    httpRequest(Get(PropertiesUri(server, bucket))).flatMap { response ⇒
       response.status match {
-        case OK ⇒ response.entity.as[RiakBucketProperties] match {
-          case Right(properties) ⇒ properties
-          case Left(error)       ⇒ throw new BucketOperationFailed(s"Fetching properties of bucket '$bucket' failed because the response entity could not be parsed.")
+        case OK ⇒ Unmarshal(response.entity).to[RiakBucketProperties].recover {
+          case _ ⇒ throw BucketOperationFailed(s"Fetching properties of bucket '$bucket' failed because the response entity could not be parsed.")
         }
-        case other ⇒ throw new BucketOperationFailed(s"Fetching properties of bucket '$bucket' produced an unexpected response code '$other'.")
+        case other ⇒ throw BucketOperationFailed(s"Fetching properties of bucket '$bucket' produced an unexpected response code '$other'.")
       }
     }
   }
@@ -173,9 +178,9 @@ private[riak] class RiakHttpClientHelper(system: ActorSystem) extends RiakUriSup
     httpRequest(Put(PropertiesUri(server, bucket), entity)).map { response ⇒
       response.status match {
         case NoContent            ⇒ ()
-        case BadRequest           ⇒ throw new ParametersInvalid(s"Setting properties of bucket '$bucket' failed because the http request contained invalid data.")
-        case UnsupportedMediaType ⇒ throw new BucketOperationFailed(s"Setting properties of bucket '$bucket' failed because the content type of the http request was not 'application/json'.")
-        case other                ⇒ throw new BucketOperationFailed(s"Setting properties of bucket '$bucket' produced an unexpected response code '$other'.")
+        case BadRequest           ⇒ throw ParametersInvalid(s"Setting properties of bucket '$bucket' failed because the http request contained invalid data.")
+        case UnsupportedMediaType ⇒ throw BucketOperationFailed(s"Setting properties of bucket '$bucket' failed because the content type of the http request was not 'application/json'.")
+        case other                ⇒ throw BucketOperationFailed(s"Setting properties of bucket '$bucket' produced an unexpected response code '$other'.")
       }
     }
   }
@@ -185,15 +190,14 @@ private[riak] class RiakHttpClientHelper(system: ActorSystem) extends RiakUriSup
   // ==========================================================================
 
   def allKeys(server: RiakServerInfo, bucket: String): Future[RiakKeys] = {
-    import spray.httpx.unmarshalling._
+    import akka.http.scaladsl.unmarshalling._
 
-    httpRequest(Get(AllKeysUri(server, bucket))).map { response ⇒
+    httpRequest(Get(AllKeysUri(server, bucket))).flatMap { response ⇒
       response.status match {
-        case OK ⇒ response.entity.as[RiakKeys] match {
-          case Right(riakKeys) ⇒ riakKeys
-          case Left(error)     ⇒ throw new BucketOperationFailed(s"List keys of bucket '$bucket' failed because the response entity could not be parsed.")
+        case OK ⇒ Unmarshal(response.entity).to[RiakKeys].recover {
+          case _ ⇒ throw BucketOperationFailed(s"List keys of bucket '$bucket' failed because the response entity could not be parsed.")
         }
-        case other ⇒ throw new BucketOperationFailed(s"""List keys of bucket "${bucket}" produced an unexpected response code: ${other}.""")
+        case other ⇒ throw BucketOperationFailed(s"""List keys of bucket "${bucket}" produced an unexpected response code: ${other}.""")
       }
     }
   }
@@ -209,57 +213,65 @@ private[riak] class RiakHttpClientHelper(system: ActorSystem) extends RiakUriSup
    * Tries to decode gzipped response payload if response has an appropriate `Content-Encoding` header.
    * Returns the payload 'as is' if Gzip decoder throws a [[ZipException]].
    */
-  private def safeDecodeGzip: ResponseTransformer = { response ⇒
-    Try(decode(Gzip).apply(response)).recover {
-      // recover from a ZipException: this means that, although the response has a "Content-Encoding: gzip" header, but its payload is not gzipped.
-      case e: ZipException ⇒ response
-    }.get
+  private def safeDecodeGzip(response: HttpResponse): HttpResponse = {
+    val entity = response.entity
+    // TODO check if Try is still necessary ??? "Not in GZIP format"
+    if (response.status.allowsEntity) {
+      Try(response.withEntity(entity.transformDataBytes(Gzip.decoderFlow))).recover {
+        case e: ZipException ⇒ response
+      }.get
+    } else response
   }
 
-  private def basePipeline(enableCompression: Boolean) = {
+  private def basePipeline(request: HttpRequest, enableCompression: Boolean) = {
     if (enableCompression) {
       // Note that we don't compress request payload in here (e.g. using `encode(Gzip)` transformer).
       // This is due to a number of known shortcomings of Riak in regards to handling gzipped requests.
-      addHeader(`Accept-Encoding`(Gzip.encoding)) ~> sendReceive ~> safeDecodeGzip
+      http.singleRequest(request.addHeader(`Accept-Encoding`(Gzip.encoding))).map(safeDecodeGzip)
     } else {
       // So one might argue why would you need even to decode if you haven't asked for a gzip response via `Accept-Encoding` header? (the enableCompression=false case).
       // Well, there is a surprise from Riak: it will respond with gzip anyway if previous `store value` request was performed with `Content-Encoding: gzip` header! o_O
       // Yes, it's that weird...
       // And adding `addHeader(`Accept-Encoding`(NoEncoding.encoding))` directive for request will break it: Riak might respond with '406 Not Acceptable'
       // Issue for tracking: https://github.com/agemooij/riak-scala-client/issues/42
-      sendReceive ~> safeDecodeGzip
+      http.singleRequest(request) // add safeDecodeGzip
     }
+    // TODO DiscardEntities if aren't consumed !!!
   }
 
-  private def httpRequest = {
-    addOptionalHeader(clientIdHeader) ~>
-      addHeader("Accept", "*/*, multipart/mixed") ~>
-      basePipeline(settings.EnableHttpCompression)
+  private def httpRequest(request: HttpRequest) = {
+    val requestWithHeaders = request
+      .addOptionalHeader(clientIdHeader)
+      .addRawHeader("Accept", "*/*, multipart/mixed")
+
+    basePipeline(requestWithHeaders, settings.EnableHttpCompression)
   }
 
-  private def createStoreHttpRequest(value: RiakValue) = {
+  private def createStoreHttpRequest(value: RiakValue)(request: HttpRequest) = {
     val vclockHeader = value.vclock.toOption.map(vclock ⇒ RawHeader(`X-Riak-Vclock`, vclock))
-    val indexHeaders = value.indexes.map(toIndexHeader(_)).toList
+    val indexHeaders = value.indexes.map(toIndexHeader).toList
 
-    addOptionalHeader(vclockHeader) ~>
-      addHeaders(indexHeaders) ~>
-      httpRequest
+    val requestWithHeaders = request
+      .addOptionalHeader(vclockHeader)
+      .mapHeaders(_ ++ indexHeaders)
+
+    httpRequest(requestWithHeaders)
   }
 
   // ==========================================================================
   // Response => RiakValue
   // ==========================================================================
 
-  private def toRiakValue(response: HttpResponse): Option[RiakValue] = toRiakValue(response.entity, response.headers)
-  private def toRiakValue(entity: HttpEntity, headers: List[HttpHeader]): Option[RiakValue] = {
-    entity.toOption.flatMap { body ⇒
+  private def toRiakValue(response: HttpResponse): Future[Option[RiakValue]] = toRiakValue(response.entity, response.headers)
+  private def toRiakValue(entity: HttpEntity, headers: Seq[HttpHeader]): Future[Option[RiakValue]] = {
+    entity.dataBytes.runFold(ByteString.empty)(_ ++ _).map { data ⇒
       val vClockOption = headers.find(_.is(`X-Riak-Vclock`.toLowerCase)).map(_.value)
       val eTagOption = headers.find(_.is("etag")).map(_.value)
       val lastModifiedOption = headers.find(_.is("last-modified")).map(h ⇒ dateTimeFromLastModified(h.asInstanceOf[`Last-Modified`]))
       val indexes = toRiakIndexes(headers)
 
       for (vClock ← vClockOption; eTag ← eTagOption; lastModified ← lastModifiedOption)
-        yield RiakValue(body.asString, body.contentType, vClock, eTag, lastModified, indexes)
+        yield RiakValue(data.utf8String, entity.contentType, vClock, eTag, lastModified, indexes)
     }
   }
 
@@ -270,23 +282,21 @@ private[riak] class RiakHttpClientHelper(system: ActorSystem) extends RiakUriSup
   // ==========================================================================
 
   private def fetchWithKeysReturnedByIndexLookup(server: RiakServerInfo, bucket: String, response: HttpResponse, resolver: RiakConflictsResolver): Future[List[RiakValue]] = {
-    response.entity.toOption.map { body ⇒
+    response.entity.dataBytes.runFold(ByteString.empty)(_ ++ _).flatMap { data ⇒
       import spray.json._
-
-      val keys = body.asString.parseJson.convertTo[RiakIndexQueryResponse].keys
-
+      val keys = data.utf8String.parseJson.convertTo[RiakIndexQueryResponse].keys
       traverse(keys)(fetch(server, bucket, _, resolver)).map(_.flatten)
-    }.getOrElse(successful(Nil))
+    }
   }
 
   // ==========================================================================
   // Conflict Resolution
   // ==========================================================================
 
-  import spray.http._
+  import akka.http.scaladsl.model._
 
   private def resolveConflict(server: RiakServerInfo, bucket: String, key: String, response: HttpResponse, resolver: RiakConflictsResolver): Future[RiakValue] = {
-    import spray.httpx.unmarshalling._
+    import akka.http.scaladsl.unmarshalling._
     import FixedMultipartContentUnmarshalling._
 
     implicit val FixedMultipartContentUnmarshaller =
@@ -296,17 +306,18 @@ private[riak] class RiakHttpClientHelper(system: ActorSystem) extends RiakUriSup
 
     val vclockHeader = response.headers.find(_.is(`X-Riak-Vclock`.toLowerCase)).toList
 
-    response.entity.as[MultipartContent] match {
-      case Left(error) ⇒ throw new ConflictResolutionFailed(error.toString)
-      case Right(multipartContent) ⇒
-        val bodyParts =
-          if (settings.IgnoreTombstones)
-            multipartContent.parts.filterNot(part ⇒ part.headers.exists(_.lowercaseName == `X-Riak-Deleted`.toLowerCase))
-          else
-            multipartContent.parts
+    Unmarshal(response.entity).to[Multipart.General].flatMap { multipartContent ⇒
+      val bodyParts =
+        if (settings.IgnoreTombstones)
+          multipartContent.parts.filterNot(part ⇒ part.headers.exists(_.lowercaseName == `X-Riak-Deleted`.toLowerCase))
+        else
+          multipartContent.parts
 
-        val values = bodyParts.flatMap(part ⇒ toRiakValue(part.entity, vclockHeader ++ part.headers)).toSet
+      val conflictSource = bodyParts.foldAsync(Set[RiakValue]()) {
+        case (values, part) ⇒ toRiakValue(part.entity, vclockHeader ++ part.headers).map(r ⇒ r.toSet ++ values)
+      }
 
+      val resolution = Flow[Set[RiakValue]].mapAsync(1) { values ⇒
         // Store the resolved value back to Riak and return the resulting RiakValue
         val ConflictResolution(result, writeBack) = resolver.resolve(values)
         if (writeBack) {
@@ -314,12 +325,18 @@ private[riak] class RiakHttpClientHelper(system: ActorSystem) extends RiakUriSup
         } else {
           successful(result)
         }
+      }
+
+      conflictSource.via(resolution).runWith(Sink.head[RiakValue])
+    }.recover {
+      case notImplementedException: ConflicResolutionNotImplemented ⇒ throw notImplementedException
+      case t                                                        ⇒ throw ConflictResolutionFailed(t.toString)
     }
   }
 
-  private def toRiakSiblingValues(response: HttpResponse): Set[RiakValue] = {
-    import spray.http._
-    import spray.httpx.unmarshalling._
+  private def toRiakSiblingValues(response: HttpResponse): Future[Set[RiakValue]] = {
+    import akka.http.scaladsl.model._
+    import akka.http.scaladsl.unmarshalling._
     import FixedMultipartContentUnmarshalling._
 
     implicit val FixedMultipartContentUnmarshaller =
@@ -329,18 +346,18 @@ private[riak] class RiakHttpClientHelper(system: ActorSystem) extends RiakUriSup
 
     val vclockHeader = response.headers.find(_.is(`X-Riak-Vclock`.toLowerCase)).toList
 
-    response.entity.as[MultipartContent] match {
-      case Left(error) ⇒ throw new BucketOperationFailed(s"Failed to parse the server response as multipart content due to: '$error'")
-      case Right(multipartContent) ⇒
-        val bodyParts =
-          if (settings.IgnoreTombstones)
-            multipartContent.parts.filterNot(part ⇒ part.headers.exists(_.lowercaseName == `X-Riak-Deleted`.toLowerCase))
-          else
-            multipartContent.parts
+    Unmarshal(response.entity).to[Multipart.General].flatMap { multipartContent ⇒
+      val bodyParts =
+        if (settings.IgnoreTombstones)
+          multipartContent.parts.filterNot(part ⇒ part.headers.exists(_.lowercaseName == `X-Riak-Deleted`.toLowerCase))
+        else
+          multipartContent.parts
 
-        val values = bodyParts.flatMap(part ⇒ toRiakValue(part.entity, vclockHeader ++ part.headers)).toSet
-
-        values
+      bodyParts.foldAsync(Set[RiakValue]()) {
+        case (values, part) ⇒ toRiakValue(part.entity, vclockHeader ++ part.headers).map(r ⇒ r.toSet ++ values)
+      }.runWith(Sink.head[Set[RiakValue]])
+    }.recover {
+      case t ⇒ throw BucketOperationFailed(s"Failed to parse the server response as multipart content due to: '${t.toString}'")
     }
   }
 }
@@ -352,78 +369,73 @@ private[riak] class RiakHttpClientHelper(system: ActorSystem) extends RiakUriSup
  * unmarshaller for multipart/mixed responses.
  */
 private[internal] object FixedMultipartContentUnmarshalling {
-  import java.io.{ ByteArrayOutputStream, ByteArrayInputStream }
-  import org.jvnet.mimepull.{ MIMEMessage, MIMEConfig }
-  import org.parboiled.common.FileUtils
-  import scala.collection.JavaConverters._
-  import spray.http.parser.HttpParser
-  import spray.httpx.encoding.Decoder
-  import spray.httpx.unmarshalling._
-  import spray.util._
-  import spray.http._
+  import scala.concurrent.{ ExecutionContext, Future }
+  import akka.http.scaladsl.coding._
+  import akka.http.scaladsl.unmarshalling._
+  import MultipartUnmarshallers._
+  import akka.http.scaladsl.model._
   import MediaTypes._
-  import HttpHeaders._
+  import headers._
 
-  def multipartContentUnmarshaller(defaultCharset: HttpCharset, decoder: Decoder): Unmarshaller[MultipartContent] =
-    multipartPartsUnmarshaller[MultipartContent](`multipart/mixed`, defaultCharset, decoder, MultipartContent(_))
+  def multipartContentUnmarshaller(defaultCharset: HttpCharset, decoder: Decoder)(implicit executionContext: ExecutionContext, mat: ActorMaterializer): FromEntityUnmarshaller[Multipart.General] = {
 
-  private def multipartPartsUnmarshaller[T <: MultipartParts](mediaRange: MediaRange,
-    defaultCharset: HttpCharset,
-    decoder: Decoder,
-    create: Seq[BodyPart] ⇒ T): Unmarshaller[T] =
-    Unmarshaller[T](mediaRange) {
-      case HttpEntity.NonEmpty(contentType, data) ⇒
-        contentType.mediaType.parameters.get("boundary") match {
-          case None | Some("") ⇒
-            sys.error("Content-Type with a multipart media type must have a non-empty 'boundary' parameter")
-          case Some(boundary) ⇒
-            val mimeMsg = new MIMEMessage(new ByteArrayInputStream(data.toByteArray), boundary, mimeParsingConfig)
-            create(convertMimeMessage(mimeMsg, defaultCharset, decoder))
-        }
-      case HttpEntity.Empty ⇒ create(Nil)
+    def fixHeaders(headers: List[HttpHeader]) = {
+      val fixedHeaders = headers.map { header ⇒
+        // from spray.util
+        def startsWith(str: String, char: Char) = str.nonEmpty && str.charAt(0) == char
+
+        if (header.is("etag") && !startsWith(header.value, '"')) RawHeader(header.name, "\"" + header.value + "\"")
+        else header
+      }
+      fixedHeaders
     }
 
-  private def decompressData(headers: List[HttpHeader], decoder: Decoder, data: Array[Byte]): Array[Byte] = {
+    multipartUnmarshaller[Multipart.General, Multipart.General.BodyPart, Multipart.General.BodyPart.Strict](
+      mediaRange = `multipart/mixed`,
+      defaultContentType = MediaTypes.`text/plain` withCharset defaultCharset,
+      createBodyPart = {
+        case (bodyPartEntity, headers) ⇒
+          val fixedHeaders: List[HttpHeader] = fixHeaders(headers)
+
+          val dataSource = bodyPartEntity.dataBytes.fold(ByteString.empty)(_ ++ _).mapAsync(1) { bs ⇒
+            if (checkHeaderForDecoding(fixedHeaders, decoder)) {
+              decoder.decode(bs)
+            } else Future.successful(bs)
+          }
+
+          Multipart.General.BodyPart(
+            // from akka-http documentation:
+            // In a Multipart.Bodypart use IndefiniteLength for content of unknown length.
+            HttpEntity.IndefiniteLength.apply(bodyPartEntity.contentType, dataSource), fixedHeaders
+          )
+      },
+      createStreamed = Multipart.General(_, _),
+      createStrictBodyPart = {
+        case (strictEntity, headers) ⇒
+          val fixedHeaders = fixHeaders(headers)
+
+          // TODO decode ???
+          //          val data =
+          //            if (checkHeaderForDecoding(fixedHeaders, decoder)) {
+          //              decoder.decodeData(strictEntity.data)
+          //            } else strictEntity.data
+
+          Multipart.General.BodyPart.Strict(
+            HttpEntity.Strict(strictEntity.contentType, strictEntity.data), fixedHeaders
+          )
+      },
+      createStrict = Multipart.General.Strict
+    )
+  }
+
+  private def checkHeaderForDecoding(headers: List[HttpHeader], decoder: Decoder): Boolean = {
     // According to RFC (https://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html),
     // "If multiple encodings have been applied to an entity, the content codings MUST be listed in the order in which
     // they were applied. Additional information about the encoding parameters MAY be provided by other entity-header
     // fields not defined by this specification."
     // This means that, if there were multiple encodings applied, this will NOT work.
-    if (headers.findByType[`Content-Encoding`].exists(_.encoding == decoder.encoding)) {
-      decoder.newDecompressor.decompress(data)
-    } else {
-      data // pass-through
-    }
-  }
 
-  private def convertMimeMessage(mimeMsg: MIMEMessage, defaultCharset: HttpCharset, decoder: Decoder): Seq[BodyPart] = {
-    mimeMsg.getAttachments.asScala.map { part ⇒
-      val rawHeaders: List[HttpHeader] = part.getAllHeaders.asScala.map(h ⇒ RawHeader(h.getName, h.getValue))(collection.breakOut)
-
-      // This is the custom code that detects illegal unquoted "Etag" headers and quotes them.
-      val fixedHeaders = rawHeaders.map { header ⇒
-        if (header.lowercaseName == "etag" && !header.value.startsWith('"')) RawHeader(header.name, "\"" + header.value + "\"")
-        else header
-      }
-
-      HttpParser.parseHeaders(fixedHeaders) match {
-        case (Nil, headers) ⇒
-          val contentType = headers.mapFind { case `Content-Type`(t) ⇒ Some(t); case _ ⇒ None }
-            .getOrElse(ContentType(`text/plain`, defaultCharset)) // RFC 2046 section 5.1
-          val outputStream = new ByteArrayOutputStream
-          FileUtils.copyAll(part.readOnce(), outputStream)
-
-          val data = decompressData(headers, decoder, outputStream.toByteArray)
-          BodyPart(HttpEntity(contentType, data), headers)
-
-        case (errors, _) ⇒ sys.error("Multipart part contains %s illegal header(s):\n%s".format(errors.size, errors.mkString("\n")))
-      }
-    }(collection.breakOut)
-  }
-
-  private val mimeParsingConfig = {
-    val config = new MIMEConfig
-    config.setMemoryThreshold(-1) // use only in-memory parsing
-    config
+    headers.exists(header ⇒ header.is("content-encoding") && header.value().contains(decoder.encoding.value))
+    // { case `Content-Encoding`(encs) ⇒ encs.contains(decoder.encoding) }
   }
 }
