@@ -19,7 +19,7 @@ licenses := Seq("The Apache Software License, Version 2.0" -> url("http://www.ap
 homepage := Some(url("http://riak.scalapenos.com"))
 
 scalacOptions := Seq("-encoding", "utf8",
-                     "-target:jvm-1.7",
+                     "-target:jvm-1.8",
                      "-feature",
                      "-language:implicitConversions",
                      "-language:postfixOps",
@@ -35,7 +35,7 @@ resolvers ++= Seq("snapshots", "releases").map(Resolver.sonatypeRepo)
 libraryDependencies <++= (scalaVersion) { v: String =>
   val akkaVersion = "2.4.17"
   val akkaHttpVersion = "10.0.5"
-  val specs2Version = "2.4.15"
+  val specs2Version = "2.4.17"
   Seq(
     "com.typesafe.akka"      %%  "akka-actor"           % akkaVersion,
     "com.typesafe.akka"      %%  "akka-slf4j"           % akkaVersion,
