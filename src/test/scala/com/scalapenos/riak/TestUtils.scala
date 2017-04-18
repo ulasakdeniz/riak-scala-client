@@ -3,13 +3,12 @@ package com.scalapenos.riak
 import java.util.UUID.randomUUID
 import java.util.concurrent.ConcurrentHashMap
 
-import scala.concurrent.Future
+import scala.concurrent.{ Await, Future }
+import scala.concurrent.duration._
 import scala.collection.JavaConversions._
-
 import akka.actor._
 import akka.testkit._
 import com.typesafe.config.{ Config, ConfigFactory }
-
 import org.specs2.mutable._
 import org.specs2.execute.{ Failure, FailureException }
 import org.specs2.specification.StandardFragments.{ Backtab, Br }
@@ -19,9 +18,9 @@ import org.specs2.time.NoTimeConversions
 trait AkkaActorSystemSpecification extends Specification with NoTimeConversions {
   implicit val defaultSystem = createActorSystem()
 
-  // manual pimped future stolen^H^Hborrowed from spray.util because a
-  // spray.util._ import causes implicit resolution conflicts with the above implicit actor system
-  implicit def pimpFuture[T](fut: Future[T]): spray.util.pimps.PimpedFuture[T] = new spray.util.pimps.PimpedFuture[T](fut)
+  implicit class PimpedFuture[T](f: Future[T]) {
+    def await: T = Await.result(f, 5.seconds)
+  }
 
   def failTest(msg: String) = throw new FailureException(Failure(msg))
 
@@ -53,7 +52,7 @@ trait AkkaActorSystemSpecification extends Specification with NoTimeConversions 
          |   enable-http-compression = $enableCompression
          | }
          |}
-      """.stripMargin)
+      """.stripMargin).withFallback(ConfigFactory.load())
 
     RiakClient(createActorSystem(Some(config)))
   }

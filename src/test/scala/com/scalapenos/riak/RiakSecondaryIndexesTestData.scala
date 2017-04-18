@@ -94,7 +94,7 @@ object RiakSecondaryIndexesTestData {
   }
 
   def plainTextSerializer[T](ser: T ⇒ String) = new RiakSerializer[T] {
-    def serialize(t: T): (String, ContentType) = (ser(t), ContentTypes.`text/plain`)
+    def serialize(t: T): (String, ContentType) = (ser(t), ContentTypes.`text/plain(UTF-8)`)
   }
 
   def planTextDeserializer[T](d: String ⇒ T) = new RiakDeserializer[T] {

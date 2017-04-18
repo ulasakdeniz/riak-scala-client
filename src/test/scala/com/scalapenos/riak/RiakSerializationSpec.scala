@@ -27,7 +27,7 @@ class RiakSerializationSpec extends Specification {
   object ClassWithCustomSerialization {
     implicit def companionXmlSerializer = new RiakSerializer[ClassWithCustomSerialization] {
       def serialize(t: ClassWithCustomSerialization): (String, ContentType) = {
-        (<xml><a>{ t.a }</a></xml>.toString, ContentType(`text/xml`))
+        (<xml><a>{ t.a }</a></xml>.toString, ContentTypes.`text/xml(UTF-8)`)
       }
     }
 
@@ -39,7 +39,7 @@ class RiakSerializationSpec extends Specification {
 
         contentType match {
           case ContentType(`text/xml`, _) ⇒ fromXml(toXml)
-          case _                          ⇒ throw RiakUnsupportedContentType(ContentType(`text/xml`), contentType)
+          case _                          ⇒ throw RiakUnsupportedContentType(ContentTypes.`text/xml(UTF-8)`, contentType)
         }
       }
     }
@@ -66,7 +66,7 @@ class RiakSerializationSpec extends Specification {
       val (data, contentType) = implicitly[RiakSerializer[ClassWithCustomSerialization]].serialize(t)
 
       data must beEqualTo(s"<xml><a>${t.a}</a></xml>")
-      contentType must beEqualTo(ContentType(`text/xml`))
+      contentType must beEqualTo(ContentTypes.`text/xml(UTF-8)`)
     }
 
     "serialize using an imported Serializer[T], preferring it over the serializer defined in the companion object of T" in {
@@ -84,7 +84,7 @@ class RiakSerializationSpec extends Specification {
   "When deserializing (String, ContentType) to any type T, it" should {
     "deserialize to Success(ClassWithCustomSerialization) if the ContentType matches the one defined in the RiakDeserializer" in {
       val data = """<xml><a>w00t!</a></xml>"""
-      val out = implicitly[RiakDeserializer[ClassWithCustomSerialization]].deserialize(data, ContentType(`text/xml`))
+      val out = implicitly[RiakDeserializer[ClassWithCustomSerialization]].deserialize(data, ContentTypes.`text/xml(UTF-8)`)
 
       out must beEqualTo(ClassWithCustomSerialization("w00t!"))
     }
@@ -93,7 +93,7 @@ class RiakSerializationSpec extends Specification {
       val data = """<xml><a>w00t!</a></xml>"""
       val deserializer = implicitly[RiakDeserializer[ClassWithCustomSerialization]]
 
-      deserializer.deserialize(data, ContentType(`application/json`)) must throwA(RiakUnsupportedContentType(ContentType(`text/xml`), ContentType(`application/json`)))
+      deserializer.deserialize(data, ContentType(`application/json`)) must throwA(RiakUnsupportedContentType(ContentTypes.`text/xml(UTF-8)`, ContentType(`application/json`)))
     }
   }
 
@@ -103,12 +103,12 @@ class RiakSerializationSpec extends Specification {
       val (data, contentType) = implicitly[RiakSerializer[String]].serialize(anyString)
 
       data must beEqualTo(anyString)
-      contentType must beEqualTo(ContentTypes.`text/plain`)
+      contentType must beEqualTo(ContentTypes.`text/plain(UTF-8)`)
     }
 
     "deserialize to the raw string data" in {
       val data = "some string"
-      val out = implicitly[RiakDeserializer[String]].deserialize(data, ContentTypes.`text/plain`)
+      val out = implicitly[RiakDeserializer[String]].deserialize(data, ContentTypes.`text/plain(UTF-8)`)
 
       out must beEqualTo(data)
     }

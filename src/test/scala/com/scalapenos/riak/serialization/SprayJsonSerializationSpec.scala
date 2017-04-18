@@ -18,12 +18,9 @@ package com.scalapenos.riak
 package serialization
 
 import org.specs2.mutable._
-import scala.util._
 
 class SprayJsonSerializationSpec extends Specification {
   import spray.json.DefaultJsonProtocol._
-  import spray.http.MediaTypes._
-  import SprayJsonSerialization._
 
   case class Thingy(name: String, number: Int)
   object Thingy {
@@ -63,7 +60,7 @@ class SprayJsonSerializationSpec extends Specification {
     "fail when deserializing with an unsupported ContentType" in {
       val deserializer = implicitly[RiakDeserializer[Thingy]]
 
-      deserializer.deserialize(validJson, ContentTypes.`text/plain`) must throwA(RiakUnsupportedContentType(ContentTypes.`application/json`, ContentTypes.`text/plain`))
+      deserializer.deserialize(validJson, ContentTypes.`text/plain(UTF-8)`) must throwA(RiakUnsupportedContentType(ContentTypes.`application/json`, ContentTypes.`text/plain(UTF-8)`))
     }
   }
 
