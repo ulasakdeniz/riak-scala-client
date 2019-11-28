@@ -69,7 +69,7 @@ private[riak] class RiakHttpClientHelper(system: ActorSystem) extends RiakUriSup
   // ==========================================================================
 
   def ping(server: RiakServerInfo): Future[Boolean] = {
-    httpRequest(Get(PingUri(server))).map { response ⇒
+    httpRequest(Get(PingUri(server))).mapResponse { response =>
       response.status match {
         case OK    => true
         case other => throw OperationFailed(s"Ping on server '$server' produced an unexpected response code '$other'.")
@@ -78,7 +78,7 @@ private[riak] class RiakHttpClientHelper(system: ActorSystem) extends RiakUriSup
   }
 
   def fetch(server: RiakServerInfo, bucket: String, key: String, resolver: RiakConflictsResolver): Future[Option[RiakValue]] = {
-    httpRequest(Get(KeyUri(server, bucket, key))).flatMap { response ⇒
+    httpRequest(Get(KeyUri(server, bucket, key))).flatMapResponse { response =>
       response.status match {
         case OK              => toRiakValue(response)
         case NotFound        => successful(None)
@@ -90,7 +90,7 @@ private[riak] class RiakHttpClientHelper(system: ActorSystem) extends RiakUriSup
   }
 
   def fetchWithSiblings(server: RiakServerInfo, bucket: String, key: String, resolver: RiakConflictsResolver): Future[Option[Set[RiakValue]]] = {
-    httpRequest(Get(KeyUri(server, bucket, key))).flatMap { response ⇒
+    httpRequest(Get(KeyUri(server, bucket, key))).flatMapResponse { response =>
       response.status match {
         case OK              => toRiakValue(response).map(_.map(Set(_)))
         case NotFound        => successful(None)
@@ -101,7 +101,7 @@ private[riak] class RiakHttpClientHelper(system: ActorSystem) extends RiakUriSup
   }
 
   def fetch(server: RiakServerInfo, bucket: String, index: RiakIndex, resolver: RiakConflictsResolver): Future[List[RiakValue]] = {
-    httpRequest(Get(IndexUri(server, bucket, index))).flatMap { response ⇒
+    httpRequest(Get(IndexUri(server, bucket, index))).flatMapResponse { response =>
       response.status match {
         case OK         => fetchWithKeysReturnedByIndexLookup(server, bucket, response, resolver)
         case BadRequest => throw ParametersInvalid(s"""Invalid index name ("${index.fullName}") or value ("${index.value}").""")
@@ -111,7 +111,7 @@ private[riak] class RiakHttpClientHelper(system: ActorSystem) extends RiakUriSup
   }
 
   def fetch(server: RiakServerInfo, bucket: String, indexRange: RiakIndexRange, resolver: RiakConflictsResolver): Future[List[RiakValue]] = {
-    httpRequest(Get(IndexRangeUri(server, bucket, indexRange))).flatMap { response ⇒
+    httpRequest(Get(IndexRangeUri(server, bucket, indexRange))).flatMapResponse { response =>
       response.status match {
         case OK         => fetchWithKeysReturnedByIndexLookup(server, bucket, response, resolver)
         case BadRequest => throw ParametersInvalid(s"""Invalid index name ("${indexRange.fullName}") or range ("${indexRange.start}" to "${indexRange.start}").""")
@@ -123,7 +123,7 @@ private[riak] class RiakHttpClientHelper(system: ActorSystem) extends RiakUriSup
   def store(server: RiakServerInfo, bucket: String, key: String, value: RiakValue, resolver: RiakConflictsResolver): Future[Unit] = {
     val request = createStoreHttpRequest(value)(_)
 
-    request(Put(KeyUri(server, bucket, key), value)).flatMap { response ⇒
+    request(Put(KeyUri(server, bucket, key), value)).flatMapResponse { response =>
       response.status match {
         case NoContent => successful(())
         case other     => throw BucketOperationFailed(s"Store of value '$value' for key '$key' in bucket '$bucket' produced an unexpected response code '$other'.")
@@ -135,7 +135,7 @@ private[riak] class RiakHttpClientHelper(system: ActorSystem) extends RiakUriSup
   def storeAndFetch(server: RiakServerInfo, bucket: String, key: String, value: RiakValue, resolver: RiakConflictsResolver): Future[RiakValue] = {
     val request = createStoreHttpRequest(value)(_)
 
-    request(Put(KeyUri(server, bucket, key, StoreQueryParameters(true)), value)).flatMap { response ⇒
+    request(Put(KeyUri(server, bucket, key, StoreQueryParameters(true)), value)).flatMapResponse { response =>
       response.status match {
         case OK              => toRiakValue(response).map(_.getOrElse(throw BucketOperationFailed(s"Store of value '$value' for key '$key' in bucket '$bucket' produced an unparsable reponse.")))
         case MultipleChoices => resolveConflict(server, bucket, key, response, resolver)
@@ -146,7 +146,7 @@ private[riak] class RiakHttpClientHelper(system: ActorSystem) extends RiakUriSup
   }
 
   def delete(server: RiakServerInfo, bucket: String, key: String): Future[Unit] = {
-    httpRequest(Delete(KeyUri(server, bucket, key))).map { response ⇒
+    httpRequest(Delete(KeyUri(server, bucket, key))).mapResponse { response =>
       response.status match {
         case NoContent => ()
         case NotFound  => ()
@@ -158,7 +158,7 @@ private[riak] class RiakHttpClientHelper(system: ActorSystem) extends RiakUriSup
   def getBucketProperties(server: RiakServerInfo, bucket: String): Future[RiakBucketProperties] = {
     import akka.http.scaladsl.unmarshalling._
 
-    httpRequest(Get(PropertiesUri(server, bucket))).flatMap { response ⇒
+    httpRequest(Get(PropertiesUri(server, bucket))).flatMapResponse { response =>
       response.status match {
         case OK => Unmarshal(response.entity).to[RiakBucketProperties].recover {
           case _ => throw BucketOperationFailed(s"Fetching properties of bucket '$bucket' failed because the response entity could not be parsed.")
@@ -175,7 +175,7 @@ private[riak] class RiakHttpClientHelper(system: ActorSystem) extends RiakUriSup
 
     // *Warning*: for some reason, Riak set bucket props HTTP endpoint doesn't handle compressed request properly.
     // Do not try to enable it here. Issue for tracking: https://github.com/agemooij/riak-scala-client/issues/41
-    httpRequest(Put(PropertiesUri(server, bucket), entity)).map { response ⇒
+    httpRequest(Put(PropertiesUri(server, bucket), entity)).mapResponse { response =>
       response.status match {
         case NoContent            => ()
         case BadRequest           => throw ParametersInvalid(s"Setting properties of bucket '$bucket' failed because the http request contained invalid data.")
@@ -192,7 +192,7 @@ private[riak] class RiakHttpClientHelper(system: ActorSystem) extends RiakUriSup
   def allKeys(server: RiakServerInfo, bucket: String): Future[RiakKeys] = {
     import akka.http.scaladsl.unmarshalling._
 
-    httpRequest(Get(AllKeysUri(server, bucket))).flatMap { response ⇒
+    httpRequest(Get(AllKeysUri(server, bucket))).flatMapResponse { response =>
       response.status match {
         case OK => Unmarshal(response.entity).to[RiakKeys].recover {
           case _ => throw BucketOperationFailed(s"List keys of bucket '$bucket' failed because the response entity could not be parsed.")
@@ -236,7 +236,6 @@ private[riak] class RiakHttpClientHelper(system: ActorSystem) extends RiakUriSup
       // Issue for tracking: https://github.com/agemooij/riak-scala-client/issues/42
       http.singleRequest(request) // add safeDecodeGzip
     }
-    // TODO DiscardEntities if aren't consumed !!!
   }
 
   private def httpRequest(request: HttpRequest): Future[HttpResponse] = {
@@ -357,7 +356,33 @@ private[riak] class RiakHttpClientHelper(system: ActorSystem) extends RiakUriSup
         case (values, part) => toRiakValue(part.entity, vclockHeader ++ part.headers).map(r => r.toSet ++ values)
       }.runWith(Sink.head[Set[RiakValue]])
     }.recover {
-      case t ⇒ throw BucketOperationFailed(s"Failed to parse the server response as multipart content due to: '${t.toString}'")
+      case t => throw BucketOperationFailed(s"Failed to parse the server response as multipart content due to: '${t.toString}'")
+    }
+  }
+
+  implicit class ResponseDiscardingMapper(responseF: Future[HttpResponse]) {
+    def mapResponse[T](f: HttpResponse => T): Future[T] = {
+      responseF.map { response =>
+        val result = f(response)
+        if (!response.entity.isStrict) response.discardEntityBytes()
+        result
+      }
+    }
+
+    def flatMapResponse[T](f: HttpResponse => Future[T]): Future[T] = {
+      responseF.flatMap { response =>
+        val result = f(response).transform(
+          success => {
+            if (!response.entity.isStrict) response.discardEntityBytes()
+            success
+          },
+          t => {
+            if (!response.entity.isStrict) response.discardEntityBytes()
+            t
+          }
+        )
+        result
+      }
     }
   }
 }
