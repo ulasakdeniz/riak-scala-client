@@ -2,9 +2,7 @@
 // Sonatype Deployment
 // ============================================================================
 
-import SonatypeKeys._
-
-sonatypeSettings
+Sonatype.sonatypeSettings
 
 publishMavenStyle := true
 
