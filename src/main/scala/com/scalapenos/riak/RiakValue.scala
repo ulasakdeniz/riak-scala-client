@@ -69,7 +69,7 @@ final case class RiakMeta[T: RiakMarshaller](
     etag: ETag,
     lastModified: DateTime,
     indexes: Set[RiakIndex] = Set.empty[RiakIndex]) {
-  def map(f: T ⇒ T): RiakMeta[T] = RiakMeta(f(data), contentType, vclock, etag, lastModified)
+  def map(f: T => T): RiakMeta[T] = RiakMeta(f(data), contentType, vclock, etag, lastModified)
 
   def toRiakValue = RiakValue(this)
 }

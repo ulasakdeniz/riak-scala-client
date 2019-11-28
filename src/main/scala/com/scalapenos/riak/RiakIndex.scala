@@ -30,7 +30,7 @@ sealed trait RiakIndex {
   def suffix: String
   def value: Type
 
-  def fullName = s"${name}_${suffix}"
+  def fullName = s"${name}_$suffix"
 }
 
 object RiakIndex {
@@ -62,7 +62,5 @@ trait RiakIndexer[T] {
 object RiakIndexer extends LowPriorityDefaultRiakIndexerImplicits
 
 private[riak] trait LowPriorityDefaultRiakIndexerImplicits {
-  implicit def defaultNoIndexes[T] = new RiakIndexer[T] {
-    def index(t: T) = Set.empty[RiakIndex]
-  }
+  implicit def defaultNoIndexes[T]: RiakIndexer[T] = (_: T) => Set.empty[RiakIndex]
 }

@@ -52,8 +52,8 @@ package object riak {
     def resolve(values: Set[RiakValue]): ConflictResolution
   }
 
-  implicit def func2resolver(f: Set[RiakValue] ⇒ ConflictResolution): RiakConflictsResolver = new RiakConflictsResolver {
-    def resolve(values: Set[RiakValue]) = f(values)
+  implicit def func2resolver(f: Set[RiakValue] => ConflictResolution): RiakConflictsResolver = new RiakConflictsResolver {
+    def resolve(values: Set[RiakValue]): ConflictResolution = f(values)
   }
 
   // ============================================================================
@@ -61,11 +61,11 @@ package object riak {
   // ============================================================================
 
   implicit class VClock(val value: String) extends AnyVal {
-    def isDefined = !isEmpty
-    def isEmpty = value.trim.isEmpty
+    def isDefined: Boolean = !isEmpty
+    def isEmpty: Boolean = value.trim.isEmpty
     def toOption: Option[VClock] = if (isDefined) Some(this) else None
 
-    override def toString = value
+    override def toString: String = value
   }
 
   object VClock {
@@ -75,15 +75,15 @@ package object riak {
   }
 
   implicit class ETag(val value: String) extends AnyVal {
-    def isDefined = !isEmpty
-    def isEmpty = value.trim.isEmpty
+    def isDefined: Boolean = !isEmpty
+    def isEmpty: Boolean = value.trim.isEmpty
     def toOption: Option[ETag] = if (isDefined) Some(this) else None
 
-    override def toString = value
+    override def toString: String = value
   }
 
   object ETag {
-    val NotSpecified = ETag("")
+    val NotSpecified: ETag = ETag("")
 
     implicit def etagToString(etag: ETag): String = etag.toString
   }

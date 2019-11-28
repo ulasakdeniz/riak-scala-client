@@ -39,13 +39,11 @@ trait RiakSerializer[T] {
 object RiakSerializer extends LowPriorityDefaultRiakSerializerImplicits
 
 private[riak] trait LowPriorityDefaultRiakSerializerImplicits {
-  implicit def stringSerializer = new RiakSerializer[String] {
-    def serialize(s: String): (String, ContentType) = (s, ContentTypes.`text/plain(UTF-8)`)
-  }
+  implicit def stringSerializer: RiakSerializer[String] = (s: String) => (s, ContentTypes.`text/plain(UTF-8)`)
 
   import serialization.SprayJsonSerialization.SprayJsonSerializer
   import spray.json.RootJsonWriter
-  implicit def sprayJsonSerializer[T: RootJsonWriter] = new SprayJsonSerializer[T]
+  implicit def sprayJsonSerializer[T: RootJsonWriter]: SprayJsonSerializer[T] = new SprayJsonSerializer[T]
 }
 
 // ============================================================================
@@ -71,14 +69,12 @@ trait RiakDeserializer[T] {
 object RiakDeserializer extends LowPriorityDefaultRiakDeserializerImplicits
 
 private[riak] trait LowPriorityDefaultRiakDeserializerImplicits {
-  implicit def stringDeserializer = new RiakDeserializer[String] {
-    def deserialize(data: String, contentType: ContentType): String = data
-  }
+  implicit def stringDeserializer: RiakDeserializer[String] = (data: String, _: ContentType) => data
 
   import serialization.SprayJsonSerialization.SprayJsonDeserializer
   import spray.json.RootJsonReader
   import scala.reflect.ClassTag
-  implicit def sprayJsonDeserializer[T: RootJsonReader: ClassTag] = new SprayJsonDeserializer[T]
+  implicit def sprayJsonDeserializer[T: RootJsonReader: ClassTag]: SprayJsonDeserializer[T] = new SprayJsonDeserializer[T]
 }
 
 /**

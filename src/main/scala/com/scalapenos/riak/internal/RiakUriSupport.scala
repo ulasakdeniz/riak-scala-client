@@ -30,33 +30,33 @@ private[riak] trait RiakUriSupport {
   }
 
   case object NoQueryParameters extends QueryParameters {
-    def query = Query.Empty
+    def query: Query = Query.Empty
   }
 
   case class StoreQueryParameters(returnBody: Boolean = false) extends QueryParameters {
-    def query = ("returnbody", s"$returnBody") +: Query.Empty
+    def query: Query = ("returnbody", s"$returnBody") +: Query.Empty
   }
 
   // ==========================================================================
   // URL building and Query Parameters
   // ==========================================================================
 
-  def PingUri(server: RiakServerInfo) =
+  def PingUri(server: RiakServerInfo): Uri =
     uri(server, "ping")
 
-  def KeyUri(server: RiakServerInfo, bucket: String, key: String, parameters: QueryParameters = NoQueryParameters) =
+  def KeyUri(server: RiakServerInfo, bucket: String, key: String, parameters: QueryParameters = NoQueryParameters): Uri =
     uri(server, s"buckets/${bucket}/keys/${key}", parameters.query)
 
-  def AllKeysUri(server: RiakServerInfo, bucket: String) =
+  def AllKeysUri(server: RiakServerInfo, bucket: String): Uri =
     uri(server, s"buckets/${bucket}/keys", Query("keys" -> "true"))
 
-  def PropertiesUri(server: RiakServerInfo, bucket: String) =
+  def PropertiesUri(server: RiakServerInfo, bucket: String): Uri =
     uri(server, s"buckets/${bucket}/props")
 
-  def IndexUri(server: RiakServerInfo, bucket: String, index: RiakIndex) =
+  def IndexUri(server: RiakServerInfo, bucket: String, index: RiakIndex): Uri =
     uri(server, s"buckets/${bucket}/index/${index.fullName}/${index.value}")
 
-  def IndexRangeUri(server: RiakServerInfo, bucket: String, indexRange: RiakIndexRange) =
+  def IndexRangeUri(server: RiakServerInfo, bucket: String, indexRange: RiakIndexRange): Uri =
     uri(server, s"buckets/${bucket}/index/${indexRange.fullName}/${indexRange.start}/${indexRange.end}")
 
   private def uri(server: RiakServerInfo, path: String, query: Query = Query.Empty): Uri = {

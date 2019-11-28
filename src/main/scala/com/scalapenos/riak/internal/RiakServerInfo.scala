@@ -22,7 +22,7 @@ package internal
 // ============================================================================
 
 private[riak] class RiakServerInfo(val host: String, val port: Int, val pathPrefix: String = "", val useSSL: Boolean = false) {
-  val protocol = if (useSSL) "https" else "http"
+  val protocol: String = if (useSSL) "https" else "http"
 }
 
 private[riak] object RiakServerInfo {

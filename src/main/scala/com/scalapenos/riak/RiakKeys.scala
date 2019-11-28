@@ -23,5 +23,5 @@ final case class RiakKeys(keys: List[String])
 
 object RiakKeys {
 
-  implicit val format = jsonFormat1(RiakKeys.apply)
+  implicit val format: RootJsonFormat[RiakKeys] = jsonFormat1(RiakKeys.apply)
 }

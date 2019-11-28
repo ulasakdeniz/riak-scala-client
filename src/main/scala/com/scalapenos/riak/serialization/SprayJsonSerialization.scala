@@ -23,21 +23,21 @@ trait SprayJsonSerialization {
   import spray.json._
 
   class SprayJsonSerializer[T: RootJsonWriter] extends RiakSerializer[T] {
-    def serialize(t: T) = (implicitly[RootJsonWriter[T]].write(t).compactPrint, ContentTypes.`application/json`)
+    def serialize(t: T): (String, ContentType) = (implicitly[RootJsonWriter[T]].write(t).compactPrint, ContentTypes.`application/json`)
   }
 
   class SprayJsonDeserializer[T: RootJsonReader: ClassTag] extends RiakDeserializer[T] {
-    def deserialize(data: String, contentType: ContentType) = {
+    def deserialize(data: String, contentType: ContentType): T = {
       contentType match {
-        case ContentType(MediaTypes.`application/octet-stream` | MediaTypes.`application/json`, _) ⇒ parseAndConvert(data)
-        case _                                                                                     ⇒ throw RiakUnsupportedContentType(ContentTypes.`application/json`, contentType)
+        case ContentType(MediaTypes.`application/octet-stream` | MediaTypes.`application/json`, _) => parseAndConvert(data)
+        case _                                                                                     => throw RiakUnsupportedContentType(ContentTypes.`application/json`, contentType)
       }
     }
 
     private def parseAndConvert(data: String): T = {
       Try(implicitly[RootJsonReader[T]].read(JsonParser(data))) match {
-        case Success(t)         ⇒ t
-        case Failure(throwable) ⇒ throw RiakDeserializationFailed(data, classTag[T].runtimeClass.getName, throwable)
+        case Success(t)         => t
+        case Failure(throwable) => throw RiakDeserializationFailed(data, classTag[T].runtimeClass.getName, throwable)
       }
     }
   }

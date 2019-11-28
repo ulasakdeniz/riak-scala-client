@@ -18,7 +18,7 @@ package com.scalapenos.riak
 package internal
 
 private[riak] trait DateTimeSupport {
-  import akka.http.scaladsl.model.{ DateTime ⇒ AkkaDateTime }
+  import akka.http.scaladsl.model.{ DateTime => AkkaDateTime }
   import org.joda.time.chrono.ISOChronology
 
   private val utcChronology = ISOChronology.getInstanceUTC
@@ -26,7 +26,7 @@ private[riak] trait DateTimeSupport {
   def currentDateTimeUTC: DateTime = org.joda.time.DateTime.now(utcChronology)
   def dateTimeUTC(millis: Long): DateTime = new DateTime(millis, utcChronology)
 
-  def toSprayDateTime(dateTime: DateTime): AkkaDateTime = AkkaDateTime(dateTime.getMillis())
+  def toSprayDateTime(dateTime: DateTime): AkkaDateTime = AkkaDateTime(dateTime.getMillis)
   def fromSprayDateTime(sprayDateTime: AkkaDateTime): DateTime = dateTimeUTC(sprayDateTime.clicks)
 }
 

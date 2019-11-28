@@ -51,7 +51,7 @@ trait RiakClient {
 // ============================================================================
 
 object RiakClientExtension extends ExtensionId[RiakClientExtension] with ExtensionIdProvider {
-  def lookup() = RiakClientExtension
+  def lookup(): RiakClientExtension.type = RiakClientExtension
   def createExtension(system: ExtendedActorSystem) = new RiakClientExtension(system)
 }
 

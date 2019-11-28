@@ -19,8 +19,10 @@ package internal
 
 import RiakHttpHeaders._
 
+import scala.util.matching.Regex
+
 private[riak] object RiakIndexSupport {
-  val IndexNameAndType = (indexHeaderPrefix + "(.+)_(bin|int)$").r
+  val IndexNameAndType: Regex = (indexHeaderPrefix + "(.+)_(bin|int)$").r
 }
 
 private[riak] trait RiakIndexSupport {
@@ -30,8 +32,8 @@ private[riak] trait RiakIndexSupport {
 
   private[riak] def toIndexHeader(index: RiakIndex): HttpHeader = {
     index match {
-      case l: RiakLongIndex   ⇒ RawHeader(indexHeaderPrefix + l.fullName, l.value.toString)
-      case s: RiakStringIndex ⇒ RawHeader(indexHeaderPrefix + s.fullName, s.value)
+      case l: RiakLongIndex   => RawHeader(indexHeaderPrefix + l.fullName, l.value.toString)
+      case s: RiakStringIndex => RawHeader(indexHeaderPrefix + s.fullName, s.value)
     }
   }
 
@@ -40,9 +42,9 @@ private[riak] trait RiakIndexSupport {
       val values = header.value.split(',')
 
       header.lowercaseName match {
-        case IndexNameAndType(name, "int") ⇒ values.map(value ⇒ RiakIndex(name, value.trim.toLong)).toSet
-        case IndexNameAndType(name, "bin") ⇒ values.map(value ⇒ RiakIndex(name, value.trim)).toSet
-        case _                             ⇒ Set.empty[RiakIndex]
+        case IndexNameAndType(name, "int") => values.map(value => RiakIndex(name, value.trim.toLong)).toSet
+        case IndexNameAndType(name, "bin") => values.map(value => RiakIndex(name, value.trim)).toSet
+        case _                             => Set.empty[RiakIndex]
       }
     }
 
@@ -57,6 +59,6 @@ private[riak] trait RiakIndexSupport {
     import spray.json._
     import spray.json.DefaultJsonProtocol._
 
-    implicit val format = jsonFormat1(RiakIndexQueryResponse.apply)
+    implicit val format: RootJsonFormat[RiakIndexQueryResponse] = jsonFormat1(RiakIndexQueryResponse.apply)
   }
 }

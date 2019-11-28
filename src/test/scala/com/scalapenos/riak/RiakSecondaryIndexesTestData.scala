@@ -77,7 +77,7 @@ object RiakSecondaryIndexesTestData {
   object ClassWithConfigurableIntIndex {
     val indexName = "foos"
     implicit def serializer = plainTextSerializer[ClassWithConfigurableIntIndex](_.foo)
-    implicit def deserializer = planTextDeserializer[ClassWithConfigurableIntIndex](data ⇒ ClassWithConfigurableIntIndex(data, -1))
+    implicit def deserializer = planTextDeserializer[ClassWithConfigurableIntIndex](data => ClassWithConfigurableIntIndex(data, -1))
     implicit def indexer = new RiakIndexer[ClassWithConfigurableIntIndex] {
       def index(t: ClassWithConfigurableIntIndex) = Set(RiakIndex(indexName, t.indexedBy))
     }
@@ -87,17 +87,17 @@ object RiakSecondaryIndexesTestData {
   object ClassWithConfigurableStringIndex {
     val indexName = "bars"
     implicit def serializer = plainTextSerializer[ClassWithConfigurableStringIndex](_.foo)
-    implicit def deserializer = planTextDeserializer[ClassWithConfigurableStringIndex](data ⇒ ClassWithConfigurableStringIndex(data, ""))
+    implicit def deserializer = planTextDeserializer[ClassWithConfigurableStringIndex](data => ClassWithConfigurableStringIndex(data, ""))
     implicit def indexer = new RiakIndexer[ClassWithConfigurableStringIndex] {
       def index(t: ClassWithConfigurableStringIndex) = Set(RiakIndex(indexName, t.indexedBy))
     }
   }
 
-  def plainTextSerializer[T](ser: T ⇒ String) = new RiakSerializer[T] {
+  def plainTextSerializer[T](ser: T => String) = new RiakSerializer[T] {
     def serialize(t: T): (String, ContentType) = (ser(t), ContentTypes.`text/plain(UTF-8)`)
   }
 
-  def planTextDeserializer[T](d: String ⇒ T) = new RiakDeserializer[T] {
+  def planTextDeserializer[T](d: String => T) = new RiakDeserializer[T] {
     def deserialize(data: String, contentType: ContentType): T = d(data)
   }
 

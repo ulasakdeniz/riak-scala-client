@@ -38,8 +38,8 @@ class RiakSerializationSpec extends Specification {
         def fromXml(elem: Elem) = ClassWithCustomSerialization((elem \ "a").text)
 
         contentType match {
-          case ContentType(`text/xml`, _) ⇒ fromXml(toXml)
-          case _                          ⇒ throw RiakUnsupportedContentType(ContentTypes.`text/xml(UTF-8)`, contentType)
+          case ContentType(`text/xml`, _) => fromXml(toXml)
+          case _                          => throw RiakUnsupportedContentType(ContentTypes.`text/xml(UTF-8)`, contentType)
         }
       }
     }

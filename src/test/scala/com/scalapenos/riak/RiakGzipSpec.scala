@@ -19,9 +19,13 @@ package com.scalapenos.riak
 import java.util.UUID.randomUUID
 import java.util.zip.ZipException
 
+import org.specs2.matcher.MatchResult
+
 import scala.concurrent.Future
 
 class RiakGzipSpec extends AkkaActorSystemSpecification {
+
+  sequential
 
   // ============================================================================
   // Test data
@@ -149,9 +153,9 @@ class RiakGzipSpec extends AkkaActorSystemSpecification {
     bucketName: String,
     key: String,
     expectedValue: String,
-    conflictResolver: Option[RiakConflictsResolver] = None) = {
+    conflictResolver: Option[RiakConflictsResolver] = None): MatchResult[String] = {
     val bucket =
-      conflictResolver.map(resolver ⇒ client.bucket(bucketName, resolver)).getOrElse(client.bucket(bucketName))
+      conflictResolver.map(resolver => client.bucket(bucketName, resolver)).getOrElse(client.bucket(bucketName))
 
     val fetchAfterStore = bucket.fetch(key).await
 

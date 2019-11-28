@@ -24,15 +24,15 @@ class UnsafeBucketOperationsSpec extends RiakClientSpecification with RandomKeyS
     "list all keys" in {
       val unsafeBucketOperations = randomUnsafeBucketOperations
       val numberOfKeys = 5
-      val keys = (1 to numberOfKeys).map(_ ⇒ randomKey)
+      val keys = (1 to numberOfKeys).map(_ => randomKey)
 
-      keys.foreach { key ⇒
+      keys.foreach { key =>
         unsafeBucketOperations.store(key, "value").await
       }
 
       val allKeys = unsafeBucketOperations.allKeys().await
 
-      keys.foreach { key ⇒
+      keys.foreach { key =>
         unsafeBucketOperations.delete(key).await
       }
 

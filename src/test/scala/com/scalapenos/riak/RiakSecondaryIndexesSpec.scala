@@ -38,18 +38,18 @@ class RiakSecondaryIndexesSpec extends RiakClientSpecification with RandomKeySup
       val numbers = (0 to 10).toList
 
       val intIndex = 42
-      val intIndexKeys = numbers.map(n ⇒ "int-indexed-" + n)
-      val intIndexValues = numbers.map(n ⇒ ClassWithConfigurableIntIndex("foo-int-" + n, intIndex))
+      val intIndexKeys = numbers.map(n => "int-indexed-" + n)
+      val intIndexValues = numbers.map(n => ClassWithConfigurableIntIndex("foo-int-" + n, intIndex))
       val intIndexKvs = intIndexKeys.zip(intIndexValues)
 
       val stringIndex = "foo"
-      val stringIndexKeys = numbers.map(n ⇒ "string-indexed-" + n)
-      val stringIndexValues = numbers.map(n ⇒ ClassWithConfigurableStringIndex("foo-string-" + n, stringIndex))
+      val stringIndexKeys = numbers.map(n => "string-indexed-" + n)
+      val stringIndexValues = numbers.map(n => ClassWithConfigurableStringIndex("foo-string-" + n, stringIndex))
       val stringIndexKvs = stringIndexKeys.zip(stringIndexValues)
 
       val bucket = client.bucket("riak-index-tests-" + randomKey)
-      val storedValues1 = Future.traverse(intIndexKvs)(kv ⇒ bucket.storeAndFetch(kv._1, kv._2)).await
-      val storedValues2 = Future.traverse(stringIndexKvs)(kv ⇒ bucket.storeAndFetch(kv._1, kv._2)).await
+      val storedValues1 = Future.traverse(intIndexKvs)(kv => bucket.storeAndFetch(kv._1, kv._2)).await
+      val storedValues2 = Future.traverse(stringIndexKvs)(kv => bucket.storeAndFetch(kv._1, kv._2)).await
 
       storedValues1 must have size (numbers.size)
       storedValues2 must have size (numbers.size)
@@ -63,12 +63,12 @@ class RiakSecondaryIndexesSpec extends RiakClientSpecification with RandomKeySup
     "support storing multiple key/value pairs with int indexes and fetching multiple values using index ranges" in {
       val indexName = ClassWithConfigurableIntIndex.indexName
       val indexes = (0 to 10).toList ++ (40 to 60).toList
-      val keys = indexes.map(n ⇒ "key-" + n)
-      val values = indexes.map(n ⇒ ClassWithConfigurableIntIndex("foo-" + n, n))
+      val keys = indexes.map(n => "key-" + n)
+      val values = indexes.map(n => ClassWithConfigurableIntIndex("foo-" + n, n))
       val kvs = keys.zip(values)
 
       val bucket = client.bucket("riak-index-tests-" + randomKey)
-      val storedValues = Future.traverse(kvs)(kv ⇒ bucket.storeAndFetch(kv._1, kv._2)).await
+      val storedValues = Future.traverse(kvs)(kv => bucket.storeAndFetch(kv._1, kv._2)).await
 
       storedValues must have size (indexes.size)
 
@@ -92,12 +92,12 @@ class RiakSecondaryIndexesSpec extends RiakClientSpecification with RandomKeySup
       val numberIndexes = ((0 to 10).toList ++ (40 to 60).toList).map(_.toString)
       val letterIndexes = List("a", "b", "y", "z", "aa", "bb", "yy", "zz", "A", "B", "Y", "Z")
       val indexes = numberIndexes ++ letterIndexes
-      val keys = indexes.map(n ⇒ "key-" + n)
-      val values = indexes.map(n ⇒ ClassWithConfigurableStringIndex("foo-" + n, n))
+      val keys = indexes.map(n => "key-" + n)
+      val values = indexes.map(n => ClassWithConfigurableStringIndex("foo-" + n, n))
       val kvs = keys.zip(values)
 
       val bucket = client.bucket("riak-index-tests-" + randomKey)
-      val storedValues = Future.traverse(kvs)(kv ⇒ bucket.storeAndFetch(kv._1, kv._2)).await
+      val storedValues = Future.traverse(kvs)(kv => bucket.storeAndFetch(kv._1, kv._2)).await
 
       storedValues must have size (indexes.size)
 
@@ -126,7 +126,7 @@ class RiakSecondaryIndexesSpec extends RiakClientSpecification with RandomKeySup
 
   import org.specs2.specification.Scope
 
-  abstract class StoreAndFetch[T: RiakMarshaller](constructor: ⇒ T, expectedData: String, expectedIndexes: Set[RiakIndex]) extends Scope {
+  abstract class StoreAndFetch[T: RiakMarshaller](constructor: => T, expectedData: String, expectedIndexes: Set[RiakIndex]) extends Scope {
     val key = randomKey
     val value = constructor
     val bucket = client.bucket("riak-index-tests-" + key)
@@ -144,7 +144,7 @@ class RiakSecondaryIndexesSpec extends RiakClientSpecification with RandomKeySup
     fetchedByKey.get.data must beEqualTo(expectedData)
     fetchedByKey.get.indexes must beEqualTo(expectedIndexes)
 
-    expectedIndexes.foreach { expectedIndex ⇒
+    expectedIndexes.foreach { expectedIndex =>
       val fetchedByIndex = bucket.fetch(expectedIndex).await
 
       fetchedByIndex must have size (1)

@@ -22,7 +22,7 @@ sealed abstract class RiakMarshaller[T: RiakSerializer: RiakIndexer] {
 }
 
 object RiakMarshaller {
-  implicit def default[T: RiakSerializer: RiakIndexer] = new RiakMarshaller[T] {
+  implicit def default[T: RiakSerializer: RiakIndexer]: RiakMarshaller[T] = new RiakMarshaller[T] {
     def serialize(t: T): (String, ContentType) = implicitly[RiakSerializer[T]].serialize(t)
     def index(t: T): Set[RiakIndex] = implicitly[RiakIndexer[T]].index(t)
   }

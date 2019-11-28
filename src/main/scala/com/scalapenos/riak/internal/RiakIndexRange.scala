@@ -28,7 +28,7 @@ private[riak] sealed trait RiakIndexRange {
   def start: Type
   def end: Type
 
-  def fullName = s"${name}_${suffix}"
+  def fullName = s"${name}_$suffix"
 }
 
 private[riak] object RiakIndexRange {

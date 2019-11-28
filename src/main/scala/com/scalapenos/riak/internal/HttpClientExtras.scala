@@ -22,8 +22,8 @@ private[riak] object HttpClientExtras {
   import akka.http.scaladsl.model.headers.RawHeader
 
   implicit class EnrichedHttpRequest(protected val httpRequest: HttpRequest) {
-    def addOptionalHeader(header: ⇒ Option[HttpHeader]) = httpRequest.mapHeaders(headers ⇒ header.toList ++ headers)
+    def addOptionalHeader(header: => Option[HttpHeader]): HttpRequest = httpRequest.mapHeaders(headers => header.toList ++ headers)
 
-    def addRawHeader(name: String, value: String) = httpRequest.addHeader(RawHeader(name, value))
+    def addRawHeader(name: String, value: String): HttpRequest = httpRequest.addHeader(RawHeader(name, value))
   }
 }
